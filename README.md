@@ -27,7 +27,7 @@ The final architecture is an NLB in front with an instance in private subnet run
 3. `vpc_id` and `subnet_id` are temporary resources to build the AMI. Change them with your own ID's. I recommend to use public subnet for this step.
 4. Execute `packer build -machine-readable packer-build.json`
 5.  `cd ./terraform`
-6. `vpc_id`, `public_subnet_id` and `private_subnet_id` from [vars.tf](./.terraform/vars.tf)change to your existing VPC and the subnet ID should be private as this is a bastion server with NLB in front
+6. `vpc_id`, `public_subnet_id` and `private_subnet_id` from [vars.tf](terraform/vars.tf) change to your existing VPC and the subnet ID should be private as this is a bastion server with NLB in front
 7. `terraform init`
 8. `terraform plan`
 9. `terraform apply`

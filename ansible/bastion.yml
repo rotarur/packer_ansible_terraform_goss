@@ -1,0 +1,141 @@
+---
+- name: Example
+  hosts: all
+  become: true
+  become_method: sudo
+
+  tasks:
+    - name: Wait for yum lock release (Ansible 2.8.0 workaround)
+      shell: ps -aux | grep yum
+      register: yum_lock
+      retries: 20
+      delay: 10
+      until: yum_lock.stdout_lines|length <= 2
+      changed_when: false
+
+    - name: Update all packages
+      yum:
+        name: "*"
+        state: latest
+
+    - name: Install commonly used packages
+      yum:
+        name: ["iptables-services"]
+        state: present
+
+    - name: Download goss install script
+      get_url:
+        url: https://goss.rocks/install
+        dest: /tmp/goss.sh
+        mode: '0700'
+
+    - name: Install goss
+      shell: sh /tmp/goss.sh
+      become_method: sudo
+      become_user: root
+
+    - name: Copy goss file
+      ansible.builtin.copy:
+        src: goss.yaml
+        dest: /tmp
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Save current state of the firewall in system file
+      shell: iptables-save > /etc/sysconfig/iptables
+      become_method: sudo
+      become_user: root
+
+    - name: Secure SSH
+      replace:
+        path: /etc/ssh/sshd_config
+        regexp: '{{ item.regexp }}'
+        replace: '{{ item.replace }}'
+      with_items:
+        - { regexp: '^.*UseDNS.*$' , replace: 'UseDNS no' }
+        - { regexp: '^.*PermitRootLogin.*$' , replace: 'PermitRootLogin no' }
+        - { regexp: '^.*PasswordAuthentication.*$' , replace: 'PasswordAuthentication no' }
+
+    - name: Set tcp flags
+      ansible.builtin.iptables:
+        chain: OUTPUT
+        jump: DROP
+        protocol: tcp
+        tcp_flags:
+          flags: ALL
+          flags_set:
+            - ACK
+            - RST
+            - SYN
+            - FIN
+
+    - name: Allow related and established connections
+      ansible.builtin.iptables:
+        chain: INPUT
+        ctstate: ESTABLISHED,RELATED
+        jump: ACCEPT
+      become: yes
+
+    - name: Allow new incoming SYN packets on TCP port 22 (SSH)
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        destination_port: "22"
+        ctstate: NEW
+        syn: match
+        jump: ACCEPT
+        comment: Accept new SSH connections.
+
+    - name: Set the policy for the INPUT chain to DROP
+      ansible.builtin.iptables:
+        chain: INPUT
+        policy: DROP
+
+    - name: Reject tcp with tcp-reset
+      ansible.builtin.iptables:
+        chain: INPUT
+        protocol: tcp
+        reject_with: tcp-reset
+        ip_version: ipv4
+
+    - name: Save final state of the firewall in system file
+      shell: iptables-save > /etc/sysconfig/iptables
+      become_method: sudo
+      become_user: root
+
+    - name: Restart sshd
+      service:
+        name: sshd
+        state: restarted
+
+    - name: Restart iptables
+      service:
+        name: iptables
+        state: restarted
+
+    - name: Enable iptables service and ensure it is not masked
+      systemd:
+        name: iptables
+        enabled: yes
+        masked: no
+
+    - name: goss validate
+      command: /usr/local/bin/goss --gossfile /tmp/goss.yaml validate --format tap
+      ignore_errors: yes
+      become: yes
+      register: goss_result
+
+    - name: Print Goss Results
+      debug:
+        msg: "{{ goss_result.stdout_lines }}"
+
+    - name: Clean up the image
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+       - /tmp/goss.sh
+       - /usr/local/bin/goss
+       - /usr/local/bin/dgoss
+       - /tmp/goss.yaml

@@ -1,0 +1,57 @@
+package:
+  iptables:
+    installed: true
+
+file:
+  /etc/sysconfig/iptables:
+    exists: true
+
+process:
+  iptables:
+    running: true
+
+command:
+  'bash -c "iptables -S | tee >(echo lines: \$(wc -l))"':
+    exit-status: 0
+    stdout:
+    - -P INPUT DROP
+    - -P INPUT DROP
+    - -P FORWARD ACCEPT
+    - -P OUTPUT ACCEPT
+    - -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+    - -A INPUT -p tcp -m tcp --dport 22 --tcp-flags FIN,SYN,RST,ACK SYN -m comment --comment "Accept new SSH connections." -m conntrack --ctstate NEW -j ACCEPT
+    - -A INPUT -p tcp -j REJECT --reject-with tcp-reset
+    - -A OUTPUT -p tcp -m tcp --tcp-flags FIN,SYN,RST,PSH,ACK,URG FIN,SYN,RST,ACK -j DROP
+    - 'lines: 7'
+    stderr: []
+    timeout: 10000
+
+port:
+  tcp:22:
+    listening: true
+    ip:
+    - 0.0.0.0
+  tcp6:22:
+    listening: true
+    ip:
+    - '::'
+service:
+  sshd:
+    enabled: true
+    running: true
+user:
+  sshd:
+    exists: true
+    uid: 74
+    gid: 74
+    groups:
+    - sshd
+    home: /var/empty/sshd
+    shell: /sbin/nologin
+group:
+  sshd:
+    exists: true
+    gid: 74
+process:
+  sshd:
+    running: true

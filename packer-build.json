@@ -1,0 +1,42 @@
+{
+   "variables": {
+      "aws_access_key": "",
+      "aws_secret_key": "",
+      "name": "example",
+      "region": "eu-west-1",
+      "vpc_id": "CHANGEME",
+      "subnet_id": "CHANGEME"
+   },
+   "builders": [
+      {
+         "type": "amazon-ebs",
+         "ami_name": "{{user `name`}}",
+         "region": "{{user `region`}}",
+         "vpc_id": "{{user `vpc_id`}}",
+         "force_deregister": "true",
+         "associate_public_ip_address": true,
+         "subnet_id": "{{user `subnet_id`}}",
+         "run_tags": {
+            "Name": "{{user `name`}}"
+         },
+         "source_ami": "ami-06ce3edf0cff21f07",
+         "instance_type": "t3.nano",
+         "ssh_username": "ec2-user",
+         "communicator": "ssh"
+      }
+   ],
+   "provisioners": [
+      {
+         "type": "shell",
+         "inline": "while [ ! -f /var/lib/cloud/instance/boot-finished ]; do echo 'Waiting for cloud-init...'; sleep 1; done"
+      },
+      {
+         "type": "shell",
+         "script": "./scripts/bootstrap.sh"
+      },
+      {
+         "type": "ansible",
+         "playbook_file": "./ansible/bastion.yml"
+      }
+   ]
+}
